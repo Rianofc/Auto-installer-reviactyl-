@@ -21,24 +21,39 @@ ask(){
  read -r REPLY < "$INPUT"
  echo "$REPLY"
 }
-
-# =====================================
-# INSTALL PANEL
-# =====================================
 install_panel(){
 
 clear
-echo "INSTALL PANEL REVIACTYL"
+echo "======================================"
+echo " INSTALL PANEL REVIACTYL"
+echo "======================================"
 
-FQDN=$(ask "Domain Panel : ")
-EMAIL=$(ask "Email SSL    : ")
-DB_PASS=$(ask "Password DB  : ")
+printf "Domain Panel : "
+read -r FQDN < /dev/tty
 
-ADMIN_USER=$(ask "Username Admin : ")
-ADMIN_EMAIL=$(ask "Email Admin    : ")
-ADMIN_FIRST=$(ask "Nama Depan     : ")
-ADMIN_LAST=$(ask "Nama Belakang  : ")
-ADMIN_PASS=$(ask "Password Admin : ")
+printf "Email SSL    : "
+read -r EMAIL < /dev/tty
+
+printf "Password DB  : "
+read -r DB_PASS < /dev/tty
+
+printf "Username Admin : "
+read -r ADMIN_USER < /dev/tty
+
+printf "Email Admin    : "
+read -r ADMIN_EMAIL < /dev/tty
+
+printf "Nama Depan     : "
+read -r ADMIN_FIRST < /dev/tty
+
+printf "Nama Belakang  : "
+read -r ADMIN_LAST < /dev/tty
+
+printf "Password Admin : "
+read -r ADMIN_PASS < /dev/tty
+
+echo ""
+echo "Mulai install panel..."
 
 apt update -y
 apt install -y software-properties-common curl ca-certificates gnupg unzip git tar
@@ -51,11 +66,7 @@ php8.3 php8.3-cli php8.3-fpm php8.3-mysql php8.3-gd \
 php8.3-mbstring php8.3-xml php8.3-bcmath php8.3-curl php8.3-zip php8.3-intl \
 nginx mariadb-server redis-server certbot python3-certbot-nginx
 
-# composer
-if ! command -v composer >/dev/null 2>&1; then
- curl -sS https://getcomposer.org/installer | php
- mv composer.phar /usr/local/bin/composer
-fi
+echo "Setup database..."
 
 mysql <<EOF
 CREATE DATABASE IF NOT EXISTS panel;
@@ -72,7 +83,7 @@ tar -xzf panel.tar.gz
 
 cp .env.example .env
 
-COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev
+composer install --no-dev
 php artisan key:generate --force
 
 sed -i "s|APP_URL=.*|APP_URL=https://${FQDN}|g" .env
@@ -80,32 +91,10 @@ sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=${DB_PASS}|g" .env
 
 chown -R www-data:www-data /var/www/reviactyl
 
-rm -f /etc/nginx/sites-enabled/default
-
-cat >/etc/nginx/sites-available/reviactyl.conf <<EOF
-server {
- listen 80;
- server_name ${FQDN};
- root /var/www/reviactyl/public;
- index index.php;
-
- location / {
-  try_files \$uri \$uri/ /index.php?\$query_string;
- }
-
- location ~ \.php$ {
-  include snippets/fastcgi-php.conf;
-  fastcgi_pass unix:/run/php/php8.3-fpm.sock;
- }
-}
-EOF
-
-ln -sf /etc/nginx/sites-available/reviactyl.conf \
-/etc/nginx/sites-enabled/reviactyl.conf
-
 systemctl restart nginx
 
-certbot --nginx -d "$FQDN" --non-interactive --agree-tos -m "$EMAIL" || true
+certbot --nginx -d "$FQDN" \
+--non-interactive --agree-tos -m "$EMAIL" || true
 
 php artisan migrate --seed --force
 
