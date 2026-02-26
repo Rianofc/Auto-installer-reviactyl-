@@ -1,72 +1,73 @@
 #!/usr/bin/env bash
+set -e
 
 # =====================================
-# AUTO INSTALL REVIACTYL BY Ryan(Asep)
+# AUTO INSTALL REVIACTYL
+# by Ryan (Asep)
 # =====================================
+
+INPUT="/dev/tty"
 
 [ "$(id -u)" != "0" ] && {
  echo "Jalankan sebagai root!"
  exit 1
 }
 
-INPUT="/dev/tty"
-
 pause(){
- echo ""
- read -r -p "Tekan Enter untuk kembali..." _ < "$INPUT"
+ read -r -p "Tekan Enter..." _ < "$INPUT"
 }
 
 ask(){
  printf "%s" "$1"
- read -r REPLY < "$INPUT"
- echo "$REPLY"
+ read -r val < "$INPUT"
+ echo "$val"
 }
+
+install_composer(){
+
+if command -v composer >/dev/null 2>&1; then
+ return
+fi
+
+echo "Install Composer..."
+
+apt install -y php-cli curl unzip
+
+php -r "copy('https://getcomposer.org/installer','composer-setup.php');"
+php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+rm composer-setup.php
+}
+
+# =====================================
+# INSTALL PANEL
+# =====================================
 install_panel(){
 
 clear
-echo "======================================"
-echo " INSTALL PANEL REVIACTYL"
-echo "======================================"
+echo "===== INSTALL REVIACTYL PANEL ====="
 
-printf "Domain Panel : "
-read -r FQDN < /dev/tty
+FQDN=$(ask "Domain Panel : ")
+EMAIL=$(ask "Email SSL    : ")
+DB_PASS=$(ask "Password DB  : ")
 
-printf "Email SSL    : "
-read -r EMAIL < /dev/tty
-
-printf "Password DB  : "
-read -r DB_PASS < /dev/tty
-
-printf "Username Admin : "
-read -r ADMIN_USER < /dev/tty
-
-printf "Email Admin    : "
-read -r ADMIN_EMAIL < /dev/tty
-
-printf "Nama Depan     : "
-read -r ADMIN_FIRST < /dev/tty
-
-printf "Nama Belakang  : "
-read -r ADMIN_LAST < /dev/tty
-
-printf "Password Admin : "
-read -r ADMIN_PASS < /dev/tty
-
-echo ""
-echo "Mulai install panel..."
+ADMIN_USER=$(ask "Username Admin : ")
+ADMIN_EMAIL=$(ask "Email Admin    : ")
+ADMIN_FIRST=$(ask "Nama Depan     : ")
+ADMIN_LAST=$(ask "Nama Belakang  : ")
+ADMIN_PASS=$(ask "Password Admin : ")
 
 apt update -y
-apt install -y software-properties-common curl ca-certificates gnupg unzip git tar
+apt install -y software-properties-common curl ca-certificates gnupg git unzip tar mariadb-server nginx redis-server certbot python3-certbot-nginx
 
 add-apt-repository -y ppa:ondrej/php
 apt update -y
 
 apt install -y \
-php8.3 php8.3-cli php8.3-fpm php8.3-mysql php8.3-gd \
-php8.3-mbstring php8.3-xml php8.3-bcmath php8.3-curl php8.3-zip php8.3-intl \
-nginx mariadb-server redis-server certbot python3-certbot-nginx
+php8.3 php8.3-cli php8.3-fpm php8.3-mysql \
+php8.3-gd php8.3-mbstring php8.3-xml \
+php8.3-bcmath php8.3-curl php8.3-zip php8.3-intl
 
-echo "Setup database..."
+install_composer
 
 mysql <<EOF
 CREATE DATABASE IF NOT EXISTS panel;
@@ -75,15 +76,18 @@ GRANT ALL PRIVILEGES ON panel.* TO 'reviactyl'@'127.0.0.1';
 FLUSH PRIVILEGES;
 EOF
 
+rm -rf /var/www/reviactyl
 mkdir -p /var/www/reviactyl
-cd /var/www/reviactyl || exit
+cd /var/www/reviactyl
 
 curl -L https://github.com/reviactyl/panel/releases/latest/download/panel.tar.gz -o panel.tar.gz
 tar -xzf panel.tar.gz
+rm panel.tar.gz
 
 cp .env.example .env
 
-composer install --no-dev
+COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader
+
 php artisan key:generate --force
 
 sed -i "s|APP_URL=.*|APP_URL=https://${FQDN}|g" .env
@@ -91,10 +95,32 @@ sed -i "s|DB_PASSWORD=.*|DB_PASSWORD=${DB_PASS}|g" .env
 
 chown -R www-data:www-data /var/www/reviactyl
 
+rm -f /etc/nginx/sites-enabled/default
+
+cat >/etc/nginx/sites-available/reviactyl.conf <<EOF
+server {
+ listen 80;
+ server_name ${FQDN};
+ root /var/www/reviactyl/public;
+ index index.php;
+
+ location / {
+  try_files \$uri \$uri/ /index.php?\$query_string;
+ }
+
+ location ~ \.php$ {
+  include snippets/fastcgi-php.conf;
+  fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+ }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/reviactyl.conf \
+/etc/nginx/sites-enabled/reviactyl.conf
+
 systemctl restart nginx
 
-certbot --nginx -d "$FQDN" \
---non-interactive --agree-tos -m "$EMAIL" || true
+certbot --nginx -d "$FQDN" --non-interactive --agree-tos -m "$EMAIL" || true
 
 php artisan migrate --seed --force
 
@@ -106,8 +132,7 @@ php artisan p:user:make \
 --password="$ADMIN_PASS" \
 --admin=1
 
-echo ""
-echo "✅ PANEL BERHASIL DIINSTALL"
+echo "✅ PANEL TERINSTALL"
 echo "https://${FQDN}"
 
 pause
@@ -119,7 +144,7 @@ pause
 install_wings(){
 
 clear
-echo "INSTALL WINGS"
+echo "===== INSTALL WINGS ====="
 
 curl -sSL https://get.docker.com | bash
 systemctl enable docker --now
@@ -151,7 +176,68 @@ EOF
 systemctl daemon-reload
 systemctl enable wings --now
 
-echo "✅ Wings berhasil diinstall"
+echo "✅ WINGS TERINSTALL"
+pause
+}
+
+# =====================================
+# DELETE PANEL TOTAL
+# =====================================
+delete_panel(){
+
+clear
+echo "Hapus Panel..."
+
+rm -rf /var/www/reviactyl
+rm -f /etc/nginx/sites-enabled/reviactyl.conf
+rm -f /etc/nginx/sites-available/reviactyl.conf
+
+mysql -e "DROP DATABASE IF EXISTS panel;"
+mysql -e "DROP USER IF EXISTS 'reviactyl'@'127.0.0.1';"
+
+systemctl restart nginx
+
+rm -rf /etc/letsencrypt/live/*
+rm -rf /etc/letsencrypt/archive/*
+rm -rf /etc/letsencrypt/renewal/*
+
+echo "✅ PANEL DIHAPUS TOTAL"
+pause
+}
+
+# =====================================
+# DELETE WINGS TOTAL
+# =====================================
+delete_wings(){
+
+clear
+echo "Hapus Wings..."
+
+systemctl stop wings || true
+systemctl disable wings || true
+
+rm -f /etc/systemd/system/wings.service
+rm -f /usr/local/bin/wings
+
+rm -rf /etc/pterodactyl
+rm -rf /var/lib/pterodactyl
+
+docker rm -f $(docker ps -aq) 2>/dev/null || true
+docker network prune -f || true
+
+systemctl daemon-reload
+
+echo "✅ WINGS DIHAPUS TOTAL"
+pause
+}
+
+# =====================================
+# RESET SEMUA
+# =====================================
+delete_all(){
+delete_panel
+delete_wings
+echo "✅ VPS PANEL CLEAN TOTAL"
 pause
 }
 
@@ -162,12 +248,15 @@ while true; do
 
 clear
 echo "======================================"
-echo " AUTO INSTALL REVIACTYL"
+echo " REVIACTYL FULL MANAGER"
 echo "        by Ryan (Asep)"
 echo "======================================"
-echo "1. Install Reviactyl Panel"
-echo "2. Install Wings Node"
-echo "3. Keluar"
+echo "1. Install Panel"
+echo "2. Install Wings"
+echo "3. Delete Panel"
+echo "4. Delete Wings"
+echo "5. Reset Semua"
+echo "6. Keluar"
 echo "======================================"
 
 printf "Pilih Menu : "
@@ -176,7 +265,10 @@ read -r menu < "$INPUT"
 case "$menu" in
 1) install_panel ;;
 2) install_wings ;;
-3) exit 0 ;;
+3) delete_panel ;;
+4) delete_wings ;;
+5) delete_all ;;
+6) exit 0 ;;
 *) echo "Menu tidak valid"; sleep 1 ;;
 esac
 
