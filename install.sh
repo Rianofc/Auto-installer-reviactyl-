@@ -233,25 +233,28 @@ uninstall_menu() {
 }
 
 # ==========================================
-# MENU UTAMA
+# MENU UTAMA (VERSI FIX BUG INPUT)
 # ==========================================
 while true; do
     clear
     echo "======================================================"
-    echo "       🚀 REVIACTYL & WINGS MANAGER BY RYAN (ASEP) 🚀       "
+    echo "       🚀 REVIACTYL & WINGS MANAGER BY SEPTIA 🚀      "
     echo "======================================================"
     echo "1. Install Reviactyl Panel (Web & Database)"
     echo "2. Install Wings (Pterodactyl Node)"
     echo "3. Uninstall / Hapus Panel atau Wings"
     echo "4. Keluar"
     echo "======================================================"
-    read -p "Pilih menu (1-4): " main_choice
+    
+    # Tambahin -p biar prompt nunggu input dengan bener
+    read -r -p "Pilih menu (1-4): " main_choice
 
-    case $main_choice in
+    case "$main_choice" in
         1) install_panel ;;
         2) install_wings ;;
         3) uninstall_menu ;;
-        4) clear; echo "Sampai jumpa!"; exit 0 ;;
-        *) echo "Pilihan tidak valid, coba lagi."; sleep 1 ;;
+        4) clear; echo "Sampai jumpa, Septia!"; exit 0 ;;
+        "") continue ;; # Kalau cuma pencet enter, balik ke atas (jangan bilang invalid)
+        *) echo -e "\n❌ Pilihan [$main_choice] tidak valid, coba lagi."; sleep 2 ;;
     esac
 done
