@@ -233,7 +233,7 @@ uninstall_menu() {
 }
 
 # ==========================================
-# MENU UTAMA (VERSI FIX BUG INPUT)
+# MENU UTAMA (VERSI STABIL)
 # ==========================================
 while true; do
     clear
@@ -246,15 +246,25 @@ while true; do
     echo "4. Keluar"
     echo "======================================================"
     
-    # Tambahin -p biar prompt nunggu input dengan bener
-    read -r -p "Pilih menu (1-4): " main_choice
+    # Tambahkan baris ini untuk membersihkan buffer sebelum membaca input
+    main_choice=""
+    
+    # Gunakan read -p dengan tanda kutip untuk memastikan input tertangkap
+    read -p "Pilih menu (1-4): " main_choice
 
     case "$main_choice" in
         1) install_panel ;;
         2) install_wings ;;
         3) uninstall_menu ;;
         4) clear; echo "Sampai jumpa, Septia!"; exit 0 ;;
-        "") continue ;; # Kalau cuma pencet enter, balik ke atas (jangan bilang invalid)
-        *) echo -e "\n❌ Pilihan [$main_choice] tidak valid, coba lagi."; sleep 2 ;;
+        *) 
+           # Jika input kosong atau tidak valid, tampilkan pesan dan tunggu sebentar
+           if [ -z "$main_choice" ]; then
+               echo -e "\n⚠️ Input tidak boleh kosong!"
+           else
+               echo -e "\n❌ Pilihan [$main_choice] tidak valid!"
+           fi
+           sleep 2 
+           ;;
     esac
 done
